@@ -15,8 +15,3 @@ To send a file to store, first enable TFTP client in windows. This will allow yo
 To run the unit tests, similarly navigate to `cmd` -> `tftp` and run `go test`. In the current state, the tests offer approximatly 75% coverage of the code.
 
 Each test spins up its own instance of a TFTP server on a random port between 1024 and 65565. Each client similarly spins up on a random port in the same range. This ensure there is no overlap between tests and makes adding new tests simple. 
-
-## Note
-
-There is a bug that I am looking into but have yet to solve. The test that demonstates this bug is called `TestWRQ_DATA_RRQ`. Currently, the server will accept new files and store them correctly. However, something overwrites the data in the data store when a read request is made. I have been unable to locate the issue at this time but am continuing to persue it. I will update the repo when I have found the issue.
-

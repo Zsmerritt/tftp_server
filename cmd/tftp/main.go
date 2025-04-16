@@ -211,7 +211,9 @@ func (s *TFTPServer) handleRequest(clientAddr *net.UDPAddr, data []byte) {
 			s.sendErrorPacket(clientAddr, tftp.ErrAccessViolation)
 			return
 		}
-		s.incomingFiles[clientAddr.String()][dataPacket.BlockNum] = dataPacket.Data
+		dataCopy := make([]byte, len(dataPacket.Data))
+		copy(dataCopy, dataPacket.Data)
+		s.incomingFiles[clientAddr.String()][dataPacket.BlockNum] = dataCopy
 		s.incomingFilesMutex.Unlock()
 
 		// Check if this is the last block
