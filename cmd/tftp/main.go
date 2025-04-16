@@ -6,16 +6,13 @@ import (
 	"net"
 	"sync"
 	"time"
-
-	"golang.org/x/exp/maps"
 )
 
 func main() {
 	address := "localhost:69"
 	timeout := 5 * time.Second
 
-	TFTPServer := NewTFTPServer(address, timeout)
-	defer TFTPServer.Close()
+	NewTFTPServer(address, timeout)
 }
 
 // // TFTPServer represents a simple TFTP server.
@@ -138,15 +135,9 @@ func (s *TFTPServer) handleRequest(clientAddr *net.UDPAddr, data []byte) {
 			return
 		}
 
-		log.Printf("[TFTP] Received RRQ for file: %s", readPacket.Filename)
-		log.Printf("[TFTP] keys: %s", maps.Keys(s.dataStore))
-		log.Printf("[TFTP] value: %v", s.dataStore[readPacket.Filename])
-
 		// Check if that file exists and is complete
 		s.dataStoreMutex.RLock()
 		storedData, ok := s.dataStore[readPacket.Filename][1]
-		log.Printf("[TFTP] Stored data: %s", s.dataStore[readPacket.Filename][1])
-		log.Printf("[TFTP] Stored data: %v", s.dataStore[readPacket.Filename])
 		s.dataStoreMutex.RUnlock()
 
 		if ok {
@@ -220,9 +211,7 @@ func (s *TFTPServer) handleRequest(clientAddr *net.UDPAddr, data []byte) {
 			s.sendErrorPacket(clientAddr, tftp.ErrAccessViolation)
 			return
 		}
-		log.Printf("[TFTP] IncomingFiles Before: %v", s.incomingFiles[clientAddr.String()])
 		s.incomingFiles[clientAddr.String()][dataPacket.BlockNum] = dataPacket.Data
-		log.Printf("[TFTP] IncomingFiles After: %v", s.incomingFiles[clientAddr.String()])
 		s.incomingFilesMutex.Unlock()
 
 		// Check if this is the last block
@@ -419,15 +408,9 @@ func (s *TFTPServer) moveCompletedFileToStore(clientAddrString string) {
 	delete(s.incomingFileNames, clientAddrString)
 	s.incomingFileNamesMutex.Unlock()
 
-	log.Printf("[TFTP] Completed file data: %s", finishedFile[1])
-	log.Printf("[TFTP] Completed file data: %v", finishedFile)
-	log.Printf("[TFTP] Completed file Name: %s", fileName)
-
 	// Move the completed file to the dataStore
 	s.dataStoreMutex.Lock()
 	s.dataStore[fileName] = finishedFile
-	log.Printf("[TFTP] Moved completed file to dataStore: %s", s.dataStore[fileName][1])
-	log.Printf("[TFTP] Moved completed file to dataStore: %v", s.dataStore[fileName])
 	s.dataStoreMutex.Unlock()
 
 	log.Printf("[TFTP] File %s successfully moved to dataStore", fileName)

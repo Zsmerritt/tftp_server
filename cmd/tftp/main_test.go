@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"math/rand/v2"
 	"ncd/homework/tftp"
 	"net"
@@ -91,8 +90,7 @@ func TestTimeoutRRQ(t *testing.T) {
 	server := setupTestServer(t, 5*time.Second)
 	conn := setupServerConnection(t, server)
 
-	lorem := []byte("Lorem ipsum dolor sit amet consectetur adipiscing elit. Quisque faucibus ex sapien vitae pellentesque sem placerat. In id cursus mi pretium tellus duis convallis. Tempus leo eu aenean sed diam urna tempor. Pulvinar vivamus fringilla lacus nec metus bibendum egestas. Iaculis massa nisl malesuada lacinia integer nunc posuere. Ut hendrerit semper vel class aptent taciti sociosqu. Ad litora torquent per conubia nostra inceptos himenaeos.Lorem ipsum dolor sit amet consectetur adipiscing elit. Quisque faucibus ex sapien vitae pellentesque sem placerat. In id cursus mi pretium tellus duis convallis. Tempus leo eu aenean sed diam urna tempor. Pulvinar vivamus fringilla lacus nec metus bibendum egestas. Iaculis massa nisl malesuada lacinia integer nunc posuere. Ut hendrerit semper vel class aptent taciti sociosqu. Ad litora torquent per conubia nostra inceptos himenaeos.")
-	expectedResult := lorem[0:512]
+	lorem := []byte("Lorem ipsum")
 	// Add a file to the data store
 	server.AddFileToDataStore("Lorem.txt", lorem)
 
@@ -109,11 +107,11 @@ func TestTimeoutRRQ(t *testing.T) {
 	time.Sleep(6 * time.Second)
 	// Check if the server sends request again
 	buffer := readAndValidateResponse(t, conn, tftp.OpData)
-	dataPacket := tftp.PacketData{}
+	var dataPacket tftp.PacketData
 	dataPacket.UnmarshalBinary(buffer)
 
-	if bytes.Equal(dataPacket.Data, expectedResult) {
-		t.Fatalf("Expected data to be \n\"%s\",\n got \n\"%s\"", lorem[0:512], dataPacket.Data)
+	if string(dataPacket.Data) != string(lorem) {
+		t.Fatalf("Expected data to be \n\"%s\",\n got \n\"%s\"", lorem, dataPacket.Data)
 	}
 
 	server.Close() // Stop the server after the test
@@ -170,8 +168,6 @@ func TestWRQ_DATA_RRQ(t *testing.T) {
 	sendPacket(t, conn, data)
 	readAndValidateResponse(t, conn, tftp.OpAck)
 
-	time.Sleep(1 * time.Minute)
-
 	// Send an RRQ packet
 	rrq := tftp.PacketRequest{
 		Op:       tftp.OpRead,
@@ -179,10 +175,137 @@ func TestWRQ_DATA_RRQ(t *testing.T) {
 		Mode:     "octet",
 	}
 	sendPacket(t, conn, rrq)
-	readAndValidateResponse(t, conn, tftp.OpAck)
+	buffer := readAndValidateResponse(t, conn, tftp.OpData)
+	var dataPacket tftp.PacketData
+	dataPacket.UnmarshalBinary(buffer)
+	if string(dataPacket.Data) != string(data.Data) {
+		t.Fatalf("Expected data to be \n\"%s\",\n got \n\"%s\"", data.Data, dataPacket.Data)
+	}
 
 	server.Close() // Stop the server after the test
 	conn.Close()   // Close the connection
+}
+
+func TestWRQ_DATA_invalidACK(t *testing.T) {
+	server := setupTestServer(t, 5*time.Second)
+	conn := setupServerConnection(t, server)
+
+	// Send a WRQ packet
+	wrq := tftp.PacketRequest{
+		Op:       tftp.OpWrite,
+		Filename: "file.txt",
+		Mode:     "octet",
+	}
+
+	sendPacket(t, conn, wrq)
+	readAndValidateResponse(t, conn, tftp.OpAck)
+
+	// Send a DATA packet
+	data := tftp.PacketData{
+		Op:       tftp.OpData,
+		BlockNum: 1,
+		Data:     []byte("1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20"),
+	}
+	sendPacket(t, conn, data)
+	readAndValidateResponse(t, conn, tftp.OpAck)
+
+	// Send an ACK packet
+	ack := tftp.PacketAck{
+		Op:       tftp.OpAck,
+		BlockNum: 1,
+	}
+	sendPacket(t, conn, ack)
+	readAndValidateResponse(t, conn, tftp.OpError)
+
+	server.Close() // Stop the server after the test
+	conn.Close()   // Close the connection
+}
+
+func TestWRQ_DATA_WRQSameFile(t *testing.T) {
+	server := setupTestServer(t, 5*time.Second)
+	conn := setupServerConnection(t, server)
+
+	// Send a WRQ packet
+	wrq := tftp.PacketRequest{
+		Op:       tftp.OpWrite,
+		Filename: "file.txt",
+		Mode:     "octet",
+	}
+
+	sendPacket(t, conn, wrq)
+	readAndValidateResponse(t, conn, tftp.OpAck)
+
+	// Send a DATA packet
+	data := tftp.PacketData{
+		Op:       tftp.OpData,
+		BlockNum: 1,
+		Data:     []byte("1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20"),
+	}
+	sendPacket(t, conn, data)
+	readAndValidateResponse(t, conn, tftp.OpAck)
+
+	// Send another WRQ packet for the same file
+	sendPacket(t, conn, wrq)
+	readAndValidateResponse(t, conn, tftp.OpError)
+
+	server.Close() // Stop the server after the test
+	conn.Close()   // Close the connection
+}
+
+func Test_InvalidData(t *testing.T) {
+	server := setupTestServer(t, 5*time.Second)
+	conn := setupServerConnection(t, server)
+
+	// Send a DATA packet
+	data := tftp.PacketData{
+		Op:       tftp.OpData,
+		BlockNum: 1,
+		Data:     []byte("1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20"),
+	}
+	sendPacket(t, conn, data)
+	readAndValidateResponse(t, conn, tftp.OpError)
+
+	server.Close() // Stop the server after the test
+	conn.Close()   // Close the connection
+}
+
+func TestTwoConnections(t *testing.T) {
+	server := setupTestServer(t, 5*time.Second)
+	conn1 := setupServerConnection(t, server)
+	conn2 := setupServerConnection(t, server)
+
+	lorem := []byte("Lorem ipsum")
+	// Add a file to the data store
+	server.AddFileToDataStore("Lorem.txt", lorem)
+
+	// Send an RRQ packet
+	rrq := tftp.PacketRequest{
+		Op:       tftp.OpRead,
+		Filename: "Lorem.txt",
+		Mode:     "octet",
+	}
+	sendPacket(t, conn1, rrq)
+	sendPacket(t, conn2, rrq)
+	readAndValidateResponse(t, conn1, tftp.OpData)
+	readAndValidateResponse(t, conn2, tftp.OpData)
+
+	buffer1 := readAndValidateResponse(t, conn1, tftp.OpData)
+	var dataPacket1 tftp.PacketData
+	dataPacket1.UnmarshalBinary(buffer1)
+	buffer2 := readAndValidateResponse(t, conn2, tftp.OpData)
+	var dataPacket2 tftp.PacketData
+	dataPacket2.UnmarshalBinary(buffer2)
+
+	if string(dataPacket1.Data) != string(lorem) {
+		t.Fatalf("Expected data to be \n\"%s\",\n got \n\"%s\"", lorem, dataPacket1.Data)
+	}
+	if string(dataPacket2.Data) != string(lorem) {
+		t.Fatalf("Expected data to be \n\"%s\",\n got \n\"%s\"", lorem, dataPacket2.Data)
+	}
+
+	server.Close() // Stop the server after the test
+	conn1.Close()  // Close the connection
+	conn2.Close()  // Close the connection
 }
 
 func setupServerConnection(t *testing.T, server *TFTPServer) *net.UDPConn {
